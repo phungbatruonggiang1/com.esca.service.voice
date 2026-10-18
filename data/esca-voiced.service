@@ -1,0 +1,17 @@
+[Unit]
+Description=ESCA voice service
+Requires=dbus.socket
+After=dbus.socket esca-audiod.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=dbus
+BusName=vn.sparc.esca.Voice1
+EnvironmentFile=-/etc/esca/voice.conf
+ExecStart=/usr/sbin/esca-voiced --server ${ESCA_SERVER}
+Restart=on-failure
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
