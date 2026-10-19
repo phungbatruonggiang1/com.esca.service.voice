@@ -48,6 +48,13 @@ struct Options {
     std::string device;
     std::string tts_dir = "/tmp";
     int timeout_ms = 20000; ///< transcription is slower than anomaly scoring
+    /// Spoken before listening starts, so the speaker knows when to begin.
+    /// Empty disables it.
+    std::string prompt = "Now, speak please.";
+    /// How long to wait for anyone to start talking. The clock only runs
+    /// while nothing has been said; once speech starts the VAD decides when
+    /// the sentence ends.
+    double wait_seconds = 20.0;
 };
 
 int usage()
@@ -57,7 +64,9 @@ int usage()
                  "  --server URL    AI server base URL\n"
                  "  --device ID     ALSA device, empty for the first one\n"
                  "  --tts-dir DIR   where spoken replies are written (default /tmp)\n"
-                 "  --timeout MS    HTTP timeout (default 20000)\n");
+                 "  --timeout MS    HTTP timeout (default 20000)\n"
+                 "  --prompt TEXT   spoken before listening; \"\" disables it\n"
+                 "  --wait SECONDS  how long to wait for speech (default 20)\n");
     return 2;
 }
 
@@ -264,6 +273,45 @@ private:
         }
 
         AudioClient audio;
+
+        // Speak the prompt, and wait for the speaker to go quiet before
+        // opening the microphone. Listening through our own voice is the
+        // echo problem this system has no cancellation for; doing the two
+        // in sequence sidesteps it entirely.
+        if (!options_.prompt.empty()) {
+            set_phase("prompting");
+            const std::string path = options_.tts_dir + "/esca-prompt.wav";
+
+            // Synthesised once and kept. A second press should not wait a
+            // second for the same sentence to be made again.
+            bool ready = prompt_cached_ == options_.prompt;
+            if (!ready) {
+                if (ai_.synthesise(options_.prompt, path, error)) {
+                    prompt_cached_ = options_.prompt;
+                    ready = true;
+                } else {
+                    // Not fatal. A missing voice should not stop someone
+                    // from talking; they just lose the cue.
+                    emit_fault("tts", "cannot speak the prompt: " + error);
+                }
+            }
+
+            if (ready) {
+                std::string play_error;
+                if (audio.play(path, play_error) >= 0) {
+                    while (running_ && audio.playing())
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                } else {
+                    emit_fault("audio", "cannot play the prompt: " + play_error);
+                }
+            }
+        }
+
+        if (!running_) {
+            set_phase("idle");
+            return;
+        }
+
         if (audio.open(options_.device, error) < 0) {
             fail("audio", "open: " + error);
             return;
@@ -296,6 +344,9 @@ private:
         set_phase("listening");
         std::fprintf(stderr, "esca-voiced: listening at %u Hz, %.0f ms of pre-roll\n",
                      format.rate, recovered * 1000.0);
+
+        const auto listening_since = std::chrono::steady_clock::now();
+        bool gave_up = false;
 
         while (running_) {
             if (!audio.next_chunk(chunk, info, 2000)) {
@@ -335,13 +386,37 @@ private:
 
             if (vad.utterance_complete())
                 break;
+
+            // The wait only applies before anyone has spoken. Once a
+            // sentence is under way the VAD owns the decision, and cutting
+            // someone off mid-word to satisfy a stopwatch would be worse
+            // than waiting.
+            if (!announced_speech) {
+                const double waited =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now()
+                                                  - listening_since).count();
+                if (waited >= options_.wait_seconds) {
+                    gave_up = true;
+                    break;
+                }
+            }
         }
 
         audio.stop();
         audio.close();
 
+        if (gave_up) {
+            char message[96];
+            std::snprintf(message, sizeof(message), "no speech in %.0f seconds",
+                          options_.wait_seconds);
+            emit_fault("speech", message);
+            set_phase("idle");
+            running_ = false;
+            return;
+        }
+
         if (!running_ || !announced_speech) {
-            // Stopped by hand, or nobody said anything. Not a fault.
+            // Stopped by hand. Not a fault.
             set_phase("idle");
             running_ = false;
             return;
@@ -389,6 +464,7 @@ private:
     std::atomic<bool> worker_alive_ { false };
     std::atomic<double> level_db_ { -90.0 };
     std::string phase_ = "idle";
+    std::string prompt_cached_; ///< the prompt the cached wav holds
     std::string last_error_;
 };
 
@@ -405,6 +481,8 @@ int main(int argc, char **argv)
         else if (arg == "--device") options.device = next();
         else if (arg == "--tts-dir") options.tts_dir = next();
         else if (arg == "--timeout") options.timeout_ms = std::stoi(next());
+        else if (arg == "--prompt") options.prompt = next();
+        else if (arg == "--wait") options.wait_seconds = std::stod(next());
         else return usage();
     }
 
