@@ -43,9 +43,17 @@ the background and looks for sustained excursions above it, letting the
 floor fall faster than it rises so a long sentence is not absorbed into it
 and the speaker silenced mid-word.
 
-Defaults: 9 dB above the floor is speech, 600 ms of silence ends an
-utterance, bursts under 200 ms are discarded as door slams, nothing runs
-past 10 s.
+Defaults: 9 dB above the floor is speech, 1 s of silence ends an
+utterance, bursts under 200 ms are discarded as door slams, and nothing
+runs past 15 s of speech -- the pauses inside a sentence do not count.
+`--hangover-ms` and `--max-seconds` change the last two; on the board they
+go in `ESCA_VOICE_OPTS` in `/etc/esca/voice.conf`.
+
+**Each return of speech restarts the hangover.** It used to restart only
+when the detector had already fallen back to silence, so the short pauses
+inside one sentence added up: a few breaths, each well under the hangover,
+ended the sentence early. With 600 ms that was two or three breaths, which
+is why anything longer than a short command was cut off.
 
 **Pre-roll comes free.** By the time a button press is noticed the first
 syllable has gone past, so `AudioClient::rewind()` reaches 500 ms back into

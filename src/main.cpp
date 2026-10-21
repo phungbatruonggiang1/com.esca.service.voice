@@ -55,6 +55,10 @@ struct Options {
     /// while nothing has been said; once speech starts the VAD decides when
     /// the sentence ends.
     double wait_seconds = 20.0;
+    /// The longest utterance transcribed, counting speech only.
+    double max_seconds = 15.0;
+    /// Silence that ends an utterance.
+    double hangover_ms = 1000.0;
 };
 
 int usage()
@@ -66,7 +70,9 @@ int usage()
                  "  --tts-dir DIR   where spoken replies are written (default /tmp)\n"
                  "  --timeout MS    HTTP timeout (default 20000)\n"
                  "  --prompt TEXT   spoken before listening; \"\" disables it\n"
-                 "  --wait SECONDS  how long to wait for speech (default 20)\n");
+                 "  --wait SECONDS  how long to wait for speech (default 20)\n"
+                 "  --max-seconds S longest utterance, speech only (default 15)\n"
+                 "  --hangover-ms N silence that ends an utterance (default 1000)\n");
     return 2;
 }
 
@@ -331,6 +337,8 @@ private:
         // Reach back before the button press: by the time anyone noticed,
         // the first syllable has already gone past.
         esca::voice::VadConfig vad_config;
+        vad_config.max_utterance_ms = options_.max_seconds * 1000.0;
+        vad_config.hangover_ms = options_.hangover_ms;
         const double recovered = audio.rewind(vad_config.preroll_ms / 1000.0);
 
         esca::voice::Vad vad(vad_config);
@@ -483,6 +491,8 @@ int main(int argc, char **argv)
         else if (arg == "--timeout") options.timeout_ms = std::stoi(next());
         else if (arg == "--prompt") options.prompt = next();
         else if (arg == "--wait") options.wait_seconds = std::stod(next());
+        else if (arg == "--max-seconds") options.max_seconds = std::stod(next());
+        else if (arg == "--hangover-ms") options.hangover_ms = std::stod(next());
         else return usage();
     }
 

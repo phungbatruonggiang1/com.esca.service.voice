@@ -23,12 +23,15 @@ struct VadConfig {
     /// How far above the running noise floor counts as speech, in dB.
     double speech_margin_db = 9.0;
     /// Silence that ends an utterance. Shorter clips words off the end of a
-    /// sentence; longer makes the system feel slow to answer.
-    double hangover_ms = 600.0;
+    /// sentence, or cuts a long one at the first breath; longer makes the
+    /// system feel slow to answer. 600 ms was right for a short command and
+    /// ended fifteen-second dictation at its first pause.
+    double hangover_ms = 1000.0;
     /// Speech must last this long to count, so a door slam is not a word.
     double min_speech_ms = 200.0;
     /// Nothing is transcribed beyond this, however long someone talks.
-    double max_utterance_ms = 10000.0;
+    /// Counts speech only, not the pauses inside it.
+    double max_utterance_ms = 15000.0;
     /// How much audio before the trigger to keep. The first syllable is
     /// always already past by the time anything notices.
     double preroll_ms = 500.0;

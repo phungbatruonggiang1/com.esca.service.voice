@@ -8,7 +8,8 @@ Wants=network-online.target
 Type=dbus
 BusName=vn.sparc.esca.Voice1
 EnvironmentFile=-/etc/esca/voice.conf
-ExecStart=/usr/sbin/esca-voiced --server ${ESCA_SERVER}
+# $ESCA_VOICE_OPTS unbraced, so it splits into words and vanishes when unset.
+ExecStart=/usr/sbin/esca-voiced --server ${ESCA_SERVER} $ESCA_VOICE_OPTS
 Restart=on-failure
 RestartSec=5
 User=root

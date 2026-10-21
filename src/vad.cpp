@@ -64,10 +64,11 @@ double Vad::push(const int16_t *pcm, size_t samples, double seconds)
     }
 
     if (loud) {
-        if (state_ == State::Silence) {
-            state_ = State::Speech;
-            silence_s_ = 0.0;
-        }
+        state_ = State::Speech;
+        // Every return of speech starts the hangover over. Clearing it only
+        // on leaving Silence let the short pauses of one sentence add up,
+        // so a few breaths -- each well under the hangover -- ended it.
+        silence_s_ = 0.0;
         speech_s_ += seconds;
         if (speech_s_ >= config_.min_speech_ms / 1000.0)
             started_ = true;
